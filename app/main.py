@@ -81,7 +81,7 @@ def menu_usuario():
                 case 2:
                     cadastrar_interrupcoes()
                 case 3:
-                    print("\nAtualizando situação de energia...\n")
+                    atualizar_situacao_de_energia()
                 case 4:
                     print("\nConsultando histórico...\n")
                 case 5:
@@ -96,7 +96,6 @@ def menu_usuario():
             print('\nErro: Você deve digitar um número inteiro válido!\n')
         except:
             print('Houve um erro desconhecido!')
-
 
 
 ## Check se há energia 
@@ -160,15 +159,34 @@ def cadastrar_interrupcoes():
     except Exception as erro:
         print(f'Ocorreu um erro no sistema: {erro}')
 
+
+
 def atualizar_situacao_de_energia():
+    print('-' * 50)
+    print('Regiões para ser atualizadas'.center(50, '-'))
+    print('-' * 50)
 
+    regions_temp = {} #Dicionário temporário para consultar se o ID digitado é um dos que podem alterar
+    for chave, dados in regions.items():
+        if not dados['has_power']:
+            pprint(f"{chave}: {dados}")
+            regions_temp[chave] = dados
 
+    if not regions_temp:
+        print('\nTodas as regiões estão atualizadas. Não há o que atualizar!\n')
+        return
 
+    try:
+        id_para_atualizacao = int(input('\nDigite o ID da região que deseja atualizar: '))
 
+        if id_para_atualizacao not in regions_temp:
+            print('\nID não encontrado! Digite um ID válido.')
+        else:
+            regions[id_para_atualizacao]['has_power'] = True
+            print(f'Situação atualizada para {regions[id_para_atualizacao]}')
 
-
-
-    return 0
+    except ValueError:
+        print('\nDigite apenas um número inteiro válido.')
 
 
 
