@@ -243,3 +243,26 @@ def calcular_estatisticas():
         "tempo_medio": tempo_medio,
         "maior_interrupcao": maior_interrupcao,
     }
+
+def obter_interrupcao(outage_id):
+    for interrupcao in historico_interrupcoes:
+        if interrupcao["id"] == outage_id:
+            return interrupcao
+
+    raise ValueError("Interrupção não encontrada.")
+
+def restabelecer_interrupcao(outage_id):
+    interrupcao = obter_interrupcao(outage_id)
+
+    if interrupcao["status"] == "restabelecida":
+        raise ValueError(
+            "A interrupção já foi restabelecida."
+        )
+
+    interrupcao["restored_at"] = datetime.now()
+    interrupcao["status"] = "restabelecida"
+
+    region_id = interrupcao["region_id"]
+    regions[region_id]["has_power"] = True
+
+    return interrupcao
