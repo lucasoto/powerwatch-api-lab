@@ -1,72 +1,18 @@
 import os
 
-from datetime import datetime
 from pprint import pprint
 
-
-historico_interrupcoes = []
-
-mapeamento_zonas = {
-    1: "Zona Norte",
-    2: "Zona Sul",
-    3: "Zona Leste",
-    4: "Zona Oeste",
-    5: "Centro",
-}
-
-
-regions = {
-    1: {
-        "name": "Sé",
-        "zone": "Centro",
-        "has_power": True,
-    },
-    2: {
-        "name": "Santana",
-        "zone": "Zona Norte",
-        "has_power": True,
-    },
-    3: {
-        "name": "Tucuruvi",
-        "zone": "Zona Norte",
-        "has_power": True,
-    },
-    4: {
-        "name": "Vila Mariana",
-        "zone": "Zona Sul",
-        "has_power": True,
-    },
-    5: {
-        "name": "Santo Amaro",
-        "zone": "Zona Sul",
-        "has_power": True,
-    },
-    6: {
-        "name": "Itaquera",
-        "zone": "Zona Leste",
-        "has_power": True,
-    },
-    7: {
-        "name": "Tatuapé",
-        "zone": "Zona Leste",
-        "has_power": True,
-    },
-    8: {
-        "name": "Pinheiros",
-        "zone": "Zona Oeste",
-        "has_power": True,
-    },
-    9: {
-        "name": "Lapa",
-        "zone": "Zona Oeste",
-        "has_power": True,
-    },
-    10: {
-        "name": "Butantã",
-        "zone": "Zona Oeste",
-        "has_power": True,
-    },
-}
+from app.data import mapeamento_zonas
+from app.services import (
+    calcular_duracao,
+    calcular_estatisticas,
+    filtrar_historico,
+    listar_historico,
+    listar_regioes,
+    registrar_interrupcao,
+    registrar_interrupcoes_por_zona,
+    restabelecer_energia,
+)
 
 
 def limpar_tela():
@@ -75,6 +21,51 @@ def limpar_tela():
         os.system("cls")
     else:
         os.system("clear")
+
+
+def formatar_data(data):
+    meses = {
+        1: "janeiro",
+        2: "fevereiro",
+        3: "março",
+        4: "abril",
+        5: "maio",
+        6: "junho",
+        7: "julho",
+        8: "agosto",
+        9: "setembro",
+        10: "outubro",
+        11: "novembro",
+        12: "dezembro",
+    }
+
+    return (
+        f"{data.day} de {meses[data.month]} de {data.year} "
+        f"às {data.hour:02d}:{data.minute:02d}"
+    )
+
+
+def formatar_duracao(duracao):
+    """Transforma um timedelta em uma duração legível."""
+    segundos_totais = max(0, int(duracao.total_seconds()))
+
+    dias, resto = divmod(segundos_totais, 86400)
+    horas, resto = divmod(resto, 3600)
+    minutos, segundos = divmod(resto, 60)
+
+    partes = []
+
+    if dias:
+        partes.append(f"{dias} dia(s)")
+    if horas:
+        partes.append(f"{horas} hora(s)")
+    if minutos:
+        partes.append(f"{minutos} minuto(s)")
+
+    if not partes:
+        partes.append(f"{segundos} segundo(s)")
+
+    return ", ".join(partes)
 
 
 def menu_usuario():
@@ -125,17 +116,21 @@ def menu_usuario():
             print("\nErro: Você deve digitar um número inteiro válido!\n")
 
 
-# Opção 1 - Consultar estado atual de energia
 def situacao_energia():
-    for region in regions.values():
+    """Opção 1 - Exibe o estado atual das regiões."""
+    for region in listar_regioes():
         if region["has_power"]:
-            print(f"Energia estável em {region['name']} - {region['zone']}")
+            print(
+                f"Energia estável em {region['name']} - {region['zone']}"
+            )
         else:
-            print(f"Falta de energia em {region['name']} - {region['zone']}")
+            print(
+                f"Falta de energia em {region['name']} - {region['zone']}"
+            )
 
 
-# Opção 2 - Cadastrar uma queda de energia
 def cadastrar_interrupcoes():
+    """Opção 2 - Registra uma interrupção por região ou por zona."""
     try:
         opcao = int(
             input(
@@ -147,7 +142,11 @@ def cadastrar_interrupcoes():
         match opcao:
             case 1:
                 print("Mapa de regiões".center(50, "-"))
-                pprint(regions)
+                for regiao in listar_regioes():
+                    print(
+                        f"{regiao['id']} - {regiao['name']} "
+                        f"({regiao['zone']})"
+                    )
                 print("-" * 50)
 
                 id_escolhido = int(
@@ -157,26 +156,18 @@ def cadastrar_interrupcoes():
                     )
                 )
 
-                if id_escolhido not in regions:
-                    print("\nErro: ID não encontrado no sistema!")
-                    return
+                try:
+                    interrupcao = registrar_interrupcao(id_escolhido)
+                    print("\nSucesso! Interrupção cadastrada:")
+                    pprint(interrupcao)
 
-                if not regions[id_escolhido]["has_power"]:
-                    print(
-                        "\nAviso: Já há um registro de queda de energia para "
-                        f"o local '{regions[id_escolhido]['name']}'!"
-                    )
-                    return
-
-                regions[id_escolhido]["has_power"] = False
-                registrar_evento(id_escolhido, "sem_energia")
-
-                print(f"\nSucesso! Interrupção cadastrada para {id_escolhido}:")
-                pprint(regions[id_escolhido])
+                except ValueError as erro:
+                    print(f"\nErro: {erro}")
 
             case 2:
                 print("Zonas da cidade".center(50, "-"))
-                pprint(mapeamento_zonas)
+                for numero, zona in mapeamento_zonas.items():
+                    print(f"{numero} - {zona}")
 
                 zona_escolhida = int(
                     input("\nDigite o número correspondente à ZONA: ")
@@ -187,24 +178,26 @@ def cadastrar_interrupcoes():
                     return
 
                 nome_zona = mapeamento_zonas[zona_escolhida]
-                houve_novo_registro = False
 
-                for id_regiao, dados in regions.items():
-                    if dados["zone"] == nome_zona and dados["has_power"]:
-                        dados["has_power"] = False
-                        registrar_evento(id_regiao, "sem_energia")
-                        houve_novo_registro = True
+                try:
+                    interrupcoes = registrar_interrupcoes_por_zona(nome_zona)
 
+                    if not interrupcoes:
                         print(
-                            f"Interrupção registrada em "
-                            f"{dados['name']} - {dados['zone']}"
+                            f"\nTodas as regiões de {nome_zona} "
+                            "já estão sem energia."
+                        )
+                        return
+
+                    for interrupcao in interrupcoes:
+                        print(
+                            "Interrupção registrada em "
+                            f"{interrupcao['name']} - {interrupcao['zone']} "
+                            f"(ocorrência #{interrupcao['id']})"
                         )
 
-                if not houve_novo_registro:
-                    print(
-                        f"\nTodas as regiões de {nome_zona} "
-                        "já estão sem energia."
-                    )
+                except ValueError as erro:
+                    print(f"\nErro: {erro}")
 
             case _:
                 print("Digite uma opção válida!")
@@ -213,123 +206,45 @@ def cadastrar_interrupcoes():
         print("\nDigite apenas números inteiros válidos.")
 
 
-# Opção 3 - Atualizar de False para True no estado de energia
 def atualizar_situacao_de_energia():
+    """Opção 3 - Restabelece a energia de uma região em interrupção."""
     print("-" * 50)
     print("Regiões para serem atualizadas".center(50, "-"))
     print("-" * 50)
 
-    regions_temp = {}
+    regioes_sem_energia = [
+        regiao
+        for regiao in listar_regioes()
+        if not regiao["has_power"]
+    ]
 
-    for chave, dados in regions.items():
-        if not dados["has_power"]:
-            print(f"{chave}: {dados}")
-            regions_temp[chave] = dados
-
-    if not regions_temp:
+    if not regioes_sem_energia:
         print("\nTodas as regiões estão atualizadas. Não há o que atualizar!\n")
         return
+
+    for regiao in regioes_sem_energia:
+        print(
+            f"{regiao['id']} - {regiao['name']} ({regiao['zone']})"
+        )
 
     try:
         id_para_atualizacao = int(
             input("\nDigite o ID da região que deseja atualizar: ")
         )
 
-        if id_para_atualizacao not in regions_temp:
-            print("\nID não encontrado! Digite um ID válido.")
-            return
+        try:
+            interrupcao = restabelecer_energia(id_para_atualizacao)
+            print(
+                f"\nEnergia restabelecida em {interrupcao['name']} - "
+                f"{interrupcao['zone']} "
+                f"(ocorrência #{interrupcao['id']})."
+            )
 
-        regions[id_para_atualizacao]["has_power"] = True
-        registrar_evento(id_para_atualizacao, "restabelecida")
-
-        print(
-            f"\nSituação atualizada para "
-            f"{regions[id_para_atualizacao]['name']} - "
-            f"{regions[id_para_atualizacao]['zone']}"
-        )
+        except (ValueError, RuntimeError) as erro:
+            print(f"\nErro: {erro}")
 
     except ValueError:
         print("\nDigite apenas um número inteiro válido.")
-
-
-def registrar_evento(id_regiao, status):
-    """Cria ou encerra uma ocorrência no histórico."""
-    if status == "sem_energia":
-        historico_interrupcoes.append(
-            {
-                "region_id": id_regiao,
-                "name": regions[id_regiao]["name"],
-                "zone": regions[id_regiao]["zone"],
-                "started_at": datetime.now(),
-                "restored_at": None,
-                "status": "sem_energia",
-            }
-        )
-
-    elif status == "restabelecida":
-        for interrupcao in reversed(historico_interrupcoes):
-            if (
-                interrupcao["region_id"] == id_regiao
-                and interrupcao["status"] == "sem_energia"
-            ):
-                interrupcao["restored_at"] = datetime.now()
-                interrupcao["status"] = "restabelecida"
-                break
-
-
-def formatar_data(data):
-    meses = {
-        1: "janeiro",
-        2: "fevereiro",
-        3: "março",
-        4: "abril",
-        5: "maio",
-        6: "junho",
-        7: "julho",
-        8: "agosto",
-        9: "setembro",
-        10: "outubro",
-        11: "novembro",
-        12: "dezembro",
-    }
-
-    return (
-        f"{data.day} de {meses[data.month]} de {data.year} "
-        f"às {data.hour:02d}:{data.minute:02d}"
-    )
-
-
-def calcular_duracao(interrupcao):
-    """Retorna a duração da interrupção como timedelta."""
-    fim = interrupcao["restored_at"]
-
-    if fim is None:
-        fim = datetime.now()
-
-    return fim - interrupcao["started_at"]
-
-
-def formatar_duracao(duracao):
-    """Transforma um timedelta em uma duração legível."""
-    segundos_totais = max(0, int(duracao.total_seconds()))
-
-    dias, resto = divmod(segundos_totais, 86400)
-    horas, resto = divmod(resto, 3600)
-    minutos, segundos = divmod(resto, 60)
-
-    partes = []
-
-    if dias:
-        partes.append(f"{dias} dia(s)")
-    if horas:
-        partes.append(f"{horas} hora(s)")
-    if minutos:
-        partes.append(f"{minutos} minuto(s)")
-
-    if not partes:
-        partes.append(f"{segundos} segundo(s)")
-
-    return ", ".join(partes)
 
 
 def exibir_historico(interrupcoes):
@@ -342,6 +257,7 @@ def exibir_historico(interrupcoes):
 
     for interrupcao in interrupcoes:
         print("-" * 60)
+        print(f"ID da ocorrência: {interrupcao['id']}")
         print(f"ID da região: {interrupcao['region_id']}")
         print(f"Região: {interrupcao['name']}")
         print(f"Zona: {interrupcao['zone']}")
@@ -374,16 +290,21 @@ def exibir_historico(interrupcoes):
 
 def escolher_regiao_filtro():
     """Mostra todas as regiões e retorna um ID válido."""
-    print("\nRegiões:")
+    regioes = listar_regioes()
 
-    for region_id, dados in regions.items():
-        print(f"{region_id} - {dados['name']} ({dados['zone']})")
+    print("\nRegiões:")
+    for regiao in regioes:
+        print(
+            f"{regiao['id']} - {regiao['name']} ({regiao['zone']})"
+        )
+
+    ids_validos = {regiao["id"] for regiao in regioes}
 
     while True:
         try:
             escolha = int(input("\nDigite o ID da região: "))
 
-            if escolha in regions:
+            if escolha in ids_validos:
                 return escolha
 
             print("\nRegião inexistente.")
@@ -412,17 +333,19 @@ def escolher_zona_filtro():
         except ValueError:
             print("\nDigite apenas números.")
 
-    regioes_da_zona = {}
-
-    for region_id, dados in regions.items():
-        if dados["zone"] == zona_escolhida:
-            regioes_da_zona[region_id] = dados
+    regioes_da_zona = [
+        regiao
+        for regiao in listar_regioes()
+        if regiao["zone"] == zona_escolhida
+    ]
 
     print(f"\nRegiões de {zona_escolhida}:")
     print("0 - Toda a zona")
 
-    for region_id, dados in regioes_da_zona.items():
-        print(f"{region_id} - {dados['name']}")
+    for regiao in regioes_da_zona:
+        print(f"{regiao['id']} - {regiao['name']}")
+
+    ids_validos = {regiao["id"] for regiao in regioes_da_zona}
 
     while True:
         try:
@@ -433,7 +356,7 @@ def escolher_zona_filtro():
             if escolha == 0:
                 return zona_escolhida, None
 
-            if escolha in regioes_da_zona:
+            if escolha in ids_validos:
                 return zona_escolhida, escolha
 
             print("\nRegião inválida para essa zona.")
@@ -496,7 +419,7 @@ def pedir_numero_opcional(mensagem, minimo=None, maximo=None):
 
 
 def solicitar_filtros_historico():
-    """Coleta os filtros do histórico de forma hierárquica e intuitiva."""
+    """Coleta filtros do histórico de forma hierárquica."""
     region_id = None
     zone = None
 
@@ -537,7 +460,9 @@ Como deseja filtrar a localização?
     year = None
 
     while True:
-        resposta = input("\nDeseja filtrar também por data? [S/N]: ").strip().lower()
+        resposta = input(
+            "\nDeseja filtrar também por data? [S/N]: "
+        ).strip().lower()
 
         if resposta in ("n", "nao", "não"):
             break
@@ -564,111 +489,52 @@ Como deseja filtrar a localização?
     }
 
 
-def filtrar_historico(
-    region_id=None,
-    zone=None,
-    status=None,
-    day=None,
-    month=None,
-    year=None,
-):
-    """Retorna apenas as ocorrências que correspondem aos filtros."""
-    resultados = []
-
-    for interrupcao in historico_interrupcoes:
-        inicio = interrupcao["started_at"]
-
-        if region_id is not None and interrupcao["region_id"] != region_id:
-            continue
-
-        if zone is not None and interrupcao["zone"] != zone:
-            continue
-
-        if status is not None and interrupcao["status"] != status:
-            continue
-
-        if day is not None and inicio.day != day:
-            continue
-
-        if month is not None and inicio.month != month:
-            continue
-
-        if year is not None and inicio.year != year:
-            continue
-
-        resultados.append(interrupcao)
-
-    return resultados
-
-
 def exibir_estatisticas():
-    """Calcula estatísticas simples com base no histórico atual."""
-    if not historico_interrupcoes:
+    """Exibe as estatísticas calculadas pela camada de serviço."""
+    estatisticas = calcular_estatisticas()
+
+    if estatisticas["total"] == 0:
         print("\nNão há dados suficientes para gerar estatísticas.")
         return
-
-    total = len(historico_interrupcoes)
-
-    em_andamento = [
-        interrupcao
-        for interrupcao in historico_interrupcoes
-        if interrupcao["status"] == "sem_energia"
-    ]
-
-    restabelecidas = [
-        interrupcao
-        for interrupcao in historico_interrupcoes
-        if interrupcao["status"] == "restabelecida"
-    ]
-
-    contagem_regioes = {}
-    contagem_zonas = {}
-
-    for interrupcao in historico_interrupcoes:
-        nome = interrupcao["name"]
-        zona = interrupcao["zone"]
-
-        contagem_regioes[nome] = contagem_regioes.get(nome, 0) + 1
-        contagem_zonas[zona] = contagem_zonas.get(zona, 0) + 1
-
-    regiao_mais_afetada = max(contagem_regioes, key=contagem_regioes.get)
-    zona_mais_afetada = max(contagem_zonas, key=contagem_zonas.get)
 
     print("\n" + "=" * 60)
     print("ESTATÍSTICAS DO HISTÓRICO".center(60))
     print("=" * 60)
 
-    print(f"Total de interrupções registradas: {total}")
-    print(f"Interrupções em andamento: {len(em_andamento)}")
-    print(f"Interrupções restabelecidas: {len(restabelecidas)}")
     print(
-        f"Região com mais interrupções: {regiao_mais_afetada} "
-        f"({contagem_regioes[regiao_mais_afetada]})"
+        "Total de interrupções registradas: "
+        f"{estatisticas['total']}"
     )
     print(
-        f"Zona com mais interrupções: {zona_mais_afetada} "
-        f"({contagem_zonas[zona_mais_afetada]})"
+        "Interrupções em andamento: "
+        f"{estatisticas['em_andamento']}"
+    )
+    print(
+        "Interrupções restabelecidas: "
+        f"{estatisticas['restabelecidas']}"
+    )
+    print(
+        "Região com mais interrupções: "
+        f"{estatisticas['regiao_mais_afetada']} "
+        f"({estatisticas['quantidade_regiao_mais_afetada']})"
+    )
+    print(
+        "Zona com mais interrupções: "
+        f"{estatisticas['zona_mais_afetada']} "
+        f"({estatisticas['quantidade_zona_mais_afetada']})"
     )
 
-    if restabelecidas:
-        duracoes = [calcular_duracao(item) for item in restabelecidas]
-
-        tempo_total = sum(duracoes, start=duracoes[0] - duracoes[0])
-        tempo_medio = tempo_total / len(duracoes)
-
-        maior_interrupcao = max(
-            restabelecidas,
-            key=calcular_duracao,
-        )
-
+    if estatisticas["restabelecidas"]:
         print(
             "Tempo total sem energia nas ocorrências encerradas: "
-            f"{formatar_duracao(tempo_total)}"
+            f"{formatar_duracao(estatisticas['tempo_total'])}"
         )
         print(
             "Duração média das interrupções encerradas: "
-            f"{formatar_duracao(tempo_medio)}"
+            f"{formatar_duracao(estatisticas['tempo_medio'])}"
         )
+
+        maior_interrupcao = estatisticas["maior_interrupcao"]
         print(
             "Maior interrupção encerrada: "
             f"{maior_interrupcao['name']} - "
@@ -683,9 +549,9 @@ def exibir_estatisticas():
     print("=" * 60)
 
 
-# Opção 4 - Histórico, filtros, duração e estatísticas
 def consultar_historico():
-    if not historico_interrupcoes:
+    """Opção 4 - Histórico, filtros, duração e estatísticas."""
+    if not listar_historico():
         print("\nNenhuma interrupção registrada no histórico.")
         return
 
@@ -708,7 +574,7 @@ def consultar_historico():
 
             match opcao:
                 case 1:
-                    exibir_historico(historico_interrupcoes)
+                    exibir_historico(listar_historico())
 
                 case 2:
                     filtros = solicitar_filtros_historico()
